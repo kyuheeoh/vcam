@@ -1,7 +1,7 @@
 /*
  * vcam sample.cpp
  * 
- * Copyright 2016 DrK <pepper@DrK-Desktop>
+ * Copyright 2016 Dr.Q <kyuheeoh@hotmail.com>
  * 
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,12 +22,19 @@
  */
 
 /*
- *  V4L2 video capture example
+ *  V4L2 video capture with framebuffer output example
  *
  *  This program can be used and distributed without restrictions.
  *
- *      This program is provided with the V4L2 API
- * see http://linuxtv.org/docs.php for more information
+ *  This program is based on the V4L2 API and adopted from 
+ *	
+ *	Testing the Linux Framebuffer for Qtopia Core (qt4-x11-4.2.2)
+ *	
+ * 	see 
+ * 
+ * 	http://linuxtv.org/docs.php for more information
+ * 	http://cep.xor.aps.anl.gov/software/qt4-x11-4.2.2
+ * 									/qtopiacore-testingframebuffer.html
  */
 
 #include <stdio.h>
