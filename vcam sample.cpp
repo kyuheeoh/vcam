@@ -33,8 +33,7 @@
  * 	see 
  * 
  * 	http://linuxtv.org/docs.php for more information
- * 	http://cep.xor.aps.anl.gov/software/qt4-x11-4.2.2
- * 									/qtopiacore-testingframebuffer.html
+ * 	http://cep.xor.aps.anl.gov/software/qt4-x11-4.2.2/qtopiacore-testingframebuffer.html
  */
 
 #include <stdio.h>
