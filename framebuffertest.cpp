@@ -29,7 +29,7 @@
  *retrieved from:
  *Testing the Linux Framebuffer for Qtopia Core (qt4-x11-4.2.2)
 
- *http://cep.xor.aps.anl.gov/software/qt4-x11-4.2.2/qtopiacore-t estingframebuffer.html
+ *http://cep.xor.aps.anl.gov/software/qt4-x11-4.2.2/qtopiacore-testingframebuffer.html
  */
 
 #include <stdlib.h>
