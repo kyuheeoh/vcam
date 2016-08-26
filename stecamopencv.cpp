@@ -1,7 +1,7 @@
 /*
- * vcam sample.cpp
+ * stecamopencv.cpp
  * 
- * Copyright 2016 Dr.Q <kyuheeoh@hotmail.com>
+ * Copyright 2016 DrK <kyuheeoh@<hotmail.com>
  * 
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,29 +21,11 @@
  * 
  */
 
-/*
- *  V4L2 video capture with framebuffer output example
- *
- *  This program can be used and distributed without restrictions.
- *
- *  This program is based on the V4L2 API and adopted from 
- *	
- *	Testing the Linux Framebuffer for Qtopia Core (qt4-x11-4.2.2)
- *	
- * 	see 
- * 
- * 	http://linuxtv.org/docs.php for more information
- * 	http://cep.xor.aps.anl.gov/software/qt4-x11-4.2.2/qtopiacore-testingframebuffer.html
- * 
- */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include <termios.h>
-
-#include <getopt.h>             /* getopt_long() */
 
 #include <fcntl.h>              /* low-level i/o */
 #include <unistd.h>
@@ -57,9 +39,11 @@
 #include <linux/videodev2.h>
 #include <linux/fb.h>
 
+#include <opencv2/opencv.hpp>
+
 #define CLEAR(x) memset(&(x), 0, sizeof(x))
 
-
+using namespace cv;
  
 
 
@@ -79,8 +63,6 @@ static enum io_method   io = IO_METHOD_MMAP;
 static int              camfd = -1;
 struct buffer          *buffers;
 static unsigned int     n_buffers;
-static int              out_buf;
-static int              force_format;
 
 static int 				cam_width (0);
 static int 				cam_height (0);
@@ -90,26 +72,6 @@ static char*			fbpointer;
 
 struct fb_var_screeninfo vinfo;
 struct fb_fix_screeninfo finfo;
-
-
-
-
-int getch(void)  
-{  
-  int ch;  
-  struct termios buf;  
-  struct termios save;  
-  
-   tcgetattr(0, &save);  
-   buf = save;  
-   buf.c_lflag &= ~(ICANON|ECHO);  
-   buf.c_cc[VMIN] = 1;  
-   buf.c_cc[VTIME] = 0;  
-   tcsetattr(0, TCSAFLUSH, &buf);  
-   ch = getchar();  
-   tcsetattr(0, TCSAFLUSH, &save);  
-   return ch;  
-}
 
 static void open_set_frame_buffer(void)
 {
@@ -178,37 +140,7 @@ static int xioctl(int fh, int request, void *arg)
 
 static void process_image(const void *p, int size)
 {
-	int x=20, y=20;
-	long int location (0);
-	char* ptr= (char*)p;
-	
-        for (y = 20; y < 20+cam_height; y++)
-        for (x = 20; x < 20+cam_width; x++)
-        {
-
-            location = (x+vinfo.xoffset) * (vinfo.bits_per_pixel/8) +
-                       (y+vinfo.yoffset) * finfo.line_length;
-
-            if (vinfo.bits_per_pixel == 32)
-            {
-				memcpy((void*)(fbpointer + location)  ,((void*)ptr) ,1);		//R
-				memcpy((void*)(fbpointer + location+1),((void*)ptr) ,1);		//G
-				memcpy((void*)(fbpointer + location+2),((void*)ptr) ,1);		//B
-				memset((void*)(fbpointer + location+3), 0    ,1);   	// No transparency
-        //location += 4;
-            }
-            else
-            {   printf ("16bpp screen");//assume 16bpp
-                int b = 10;
-                int g = (x-100)/6;     // A little green
-                int r = 31-(y-100)/16;    // A lot of red
-                unsigned short int t = r<<11 | g << 5 | b;
-                *((unsigned short int*)(fbpointer + location)) = t;
-            }
-		//if (x<40) printf ("%d/",(int)*ptr);
-			ptr++;
-		} 
-       
+	       
 }
 
 static int read_frame(void)
@@ -705,99 +637,14 @@ static void open_device(void)
         }
 }
 
-static void usage(FILE *fp, int argc, char **argv)
+
+
+int main(void)
 {
-        fprintf(fp,
-                 "Usage: %s [options]\n\n"
-                 "Version 1.3\n"
-                 "Options:\n"
-                 "-d | --device name   Video device name [%s]\n"
-                 "-h | --help          Print this message\n"
-                 "-m | --mmap          Use memory mapped buffers [default]\n"
-                 "-r | --read          Use read() calls\n"
-                 "-u | --userp         Use application allocated buffers\n"
-                 "-o | --output        Outputs stream to stdout\n"
-                 "-f | --format        Force format to 640x480 YUYV\n"
-                 "-c | --count         Number of frames to grab [%i]\n"
-                 "",
-                 argv[0], dev_name, 0);
-}
-
-static const char short_options[] = "d:hmruofc:";
-
-static const struct option
-long_options[] = {
-        { "device", required_argument, NULL, 'd' },
-        { "help",   no_argument,       NULL, 'h' },
-        { "mmap",   no_argument,       NULL, 'm' },
-        { "read",   no_argument,       NULL, 'r' },
-        { "userp",  no_argument,       NULL, 'u' },
-        { "output", no_argument,       NULL, 'o' },
-        { "format", no_argument,       NULL, 'f' },
-        { "count",  required_argument, NULL, 'c' },
-        { 0, 0, 0, 0 }
-};
-
-int main(int argc, char **argv)
-{
+	Mat left_eye;
+	
         dev_name = (char*) "/dev/video0";
-
-        for (;;) {
-                int idx;
-                int c;
-
-                c = getopt_long(argc, argv,
-                                short_options, long_options, &idx);
-
-                if (-1 == c)
-                        break;
-
-                switch (c) {
-                case 0: /* getopt_long() flag */
-                        break;
-
-                case 'd':
-                        dev_name = optarg;
-                        break;
-
-                case 'h':
-                        usage(stdout, argc, argv);
-                        exit(EXIT_SUCCESS);
-
-                case 'm':
-                        io = IO_METHOD_MMAP;
-                        break;
-
-                case 'r':
-                        io = IO_METHOD_READ;
-                        break;
-
-                case 'u':
-                        io = IO_METHOD_USERPTR;
-                        break;
-
-                case 'o':
-                        out_buf++;
-                        break;
-
-                case 'f':
-                        force_format++;
-                        break;
-
-                case 'c':
-                        errno = 0;
-                   
-                        if (errno)
-                                errno_exit(optarg);
-                        break;
-
-                default:
-                        usage(stderr, argc, argv);
-                        exit(EXIT_FAILURE);
-                }
-        }
-
-        open_device();
+		open_device();
         init_device();
         start_capturing();
         open_set_frame_buffer();
@@ -807,6 +654,5 @@ int main(int argc, char **argv)
         uninit_device();
         close_device();
         
-        fprintf(stderr, "\n");
         return 0;
 }
