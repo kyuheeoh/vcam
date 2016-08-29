@@ -1,5 +1,5 @@
 /*
-* stecam_opencv.cxx
+* stecam_ocv.cpp
 *
 * Copyright 2016 Dr.Q <kyuheeoh@hotmail.com>
 *
@@ -23,18 +23,17 @@
 
 /*
 * V4L2 video capture and openCV display for StereoCam with 16bpp
-* RAW input.
-* Simplest demosaicing with CPU process, Not guaranted working on
-* low spec - CPU machine.
+* RAW Rinput( Left 8bpp+Right 8bpp).
+* Demosaicing with opencv GPU process, Not guaranted working on every 
+* machine.
 *
 * This program can be used and distributed without restrictions.
-*
-*
+**
 * see
 * http://linuxtv.org/docs.php
 * http://docs.opencv.org/3.1.0 for more information
 *
-* 										26.08.2016 Kyu H Oh a.k.a Dr.Q.
+* 										Aug.29.2016 Kyu H Oh a.k.a Dr.Q.
 */
 
 #define TRUE 1
@@ -59,6 +58,8 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/opencv.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/core/ocl.hpp>
 
 using namespace cv;
 
@@ -95,8 +96,8 @@ typedef struct
 	buffer_t head;
 }camera_t;
 
-static const int cam_width (640);
-static const int cam_height (480);
+static const int cam_width (1280);
+static const int cam_height (960);
 
 camera_t* camera_open(const char * device, uint32_t width, uint32_t height)
 {
@@ -302,173 +303,127 @@ int cutoff_0_FF(int value)
 return (value < 0) ? 0 : (0xFF < value) ? 0xFF : value;
 }
 
-uint8_t* yuyv2rgbl(uint16_t* yuyv, uint32_t width, uint32_t height)
+uint8_t* GetMatEachEye(uint16_t* yuyv, uint32_t width, uint32_t height)
 {
-	uint8_t* rgbl = (uint8_t*) calloc(width * height * 3,
-									  sizeof (uint8_t));
-	unsigned int G;
-
+	uint8_t* lr = (uint8_t*) calloc(width * height * 2,
+										sizeof (uint8_t));
+	
+	unsigned int G,H;
+										
 	for (size_t y = 0; y < height; y +=2)
 		for (size_t x = 0; x < width; x += 2)
 		{
-			size_t index = y * width + x;
+			size_t index = y * width + x;	
 			
-			// openCV Mat = BGR888 PIX_FORMAT
-			// (x,y)
-			// R
-			G = ((yuyv[index-width]%256)
-				+(yuyv[index+width]%256))/2;
-			rgbl[index * 3 + 2 ] = cutoff_0_FF(G);
-		
-			// G
-			G = ((yuyv[index]%256));
-			rgbl[index * 3 + 1 /*(x,y).G*/ ] = cutoff_0_FF(G);
+			G = yuyv[index]%256;
+			H = yuyv[index]>>8;
 			
-			// B
-			G = ((yuyv[index-1]%256)
-				+(yuyv[index+1]%256))/2;
-			rgbl[index * 3 + 0 /*(x,y).B*/ ]= cutoff_0_FF(G);
+			lr[index + y*width ] = cutoff_0_FF(G);								
+			lr[index + width+ y*width ] = cutoff_0_FF(H);							
+			
 
+			G = yuyv[index+1]%256;
+			H = yuyv[index+1]>>8;
+			
+			lr[index + y*width + 1 ] = cutoff_0_FF(G);
+			lr[index + width + y*width + 1 ] = cutoff_0_FF(H);
+			
+			G = yuyv[index+width]%256;
+			H = yuyv[index+width]>>8;
+			
+			lr[index + y*width + 2*width ] = cutoff_0_FF(G);
+			lr[index + width  + y*width + 2*width ] = cutoff_0_FF(H);
 
-			// (x+1,y)
-			// R
-			G = (yuyv[index+1]%256);
-			rgbl[index * 3 + 5 /*(x+1,y).R*/ ]= cutoff_0_FF(G);
-	
-			// G
-			G = ((yuyv[index-width+1]%256)
-				+(yuyv[index]%256)
-				+(yuyv[index+2]%256)
-				+(yuyv[index+width+1]%256))/4;
-			rgbl[index * 3 + 4 /*(x+1,y).G*/ ]= cutoff_0_FF(G);
-		
-			// B
-			G = ((yuyv[index-width]%256)
-				+(yuyv[index-width+2]%256)
-				+(yuyv[index+width]%256)
-				+(yuyv[index+width+2]%256))/4;
-			rgbl[index * 3 + 3 /*(x+1,y).B*/ ]= cutoff_0_FF(G);
-		
-			//(x,y+1)
-			// R
-			G = ((yuyv[index-1]%256)
-				+(yuyv[index+1]%256)
-				+(yuyv[index+2*width-1]%256)
-				+(yuyv[index+2*width+1]%256))/4;
-			rgbl[(index+width) * 3 + 2 /*(x,y+1).R*/ ]= cutoff_0_FF(G);
-		
-			// G
-			G = ((yuyv[index]%256)
-				+(yuyv[index+2*width]%256)
-				+(yuyv[index+width-1]%256)
-				+(yuyv[index+width+1]%256))/4;
-			rgbl[(index+width) * 3 + 1 /*(x,y+1).G*/ ]= cutoff_0_FF(G);
-		
-			// B
-			G = (yuyv[index+width]%256);
-			rgbl[(index+width) * 3 + 0 /*(x,y+1).B*/ ]= cutoff_0_FF(G);
+			G = yuyv[index+width+1]%256;
+			H = yuyv[index+width+1]>>8;
 			
-			// (x+1,y+1)
-			// R
-			G = ((yuyv[index+1]%256)
-				+(yuyv[index+2*width+1]%256))/2;
-			rgbl[(index+width) * 3 + 5 /*(x+1,y+1).R*/ ]= cutoff_0_FF(G);
-			
-			// G
-			G = (yuyv[index+width+1]%256);
-			rgbl[(index+width) * 3 + 4 /*(x+1,y+1).G*/ ]= cutoff_0_FF(G);
-	
-			// B
-			G = ((yuyv[index+width]%256)
-				+(yuyv[index+width+2]%256))/2;
-			rgbl[(index+width) * 3 + 3 /*(x+1,y+1).B*/ ]= cutoff_0_FF(G);
+			lr[index + y*width + 2*width +1 ] = cutoff_0_FF(G);
+			lr[(index + width) + y*width + 2*width + 1 ] = cutoff_0_FF(H);
 		}
-	return rgbl;
+		
+	return lr;
+
 }
 
-uint8_t* yuyv2rgbr(uint16_t* yuyv, uint32_t width, uint32_t height)
+/*
+uint8_t* GetMatEachEye_C3(uint16_t* yuyv, uint32_t width, uint32_t height)
 {
-	uint8_t* rgbr = (uint8_t*) calloc(width * height * 3, sizeof (uint8_t));
-	unsigned int G;
+	uint8_t* rgblr = (uint8_t*) calloc(width * height * 3 * 2,
+										sizeof (uint8_t));
 	
+	unsigned int G,H;
+										
 	for (size_t y = 0; y < height; y +=2)
-	for (size_t x = 0; x < width; x += 2)
+		for (size_t x = 0; x < width; x += 2)
 		{
-			size_t index = y * width + x;
+			size_t index = y * width + x;	
 			
-			//openCV Mat = BGR888 PIX_FORMAT
+			G = yuyv[index]%256;
+			H = yuyv[index]>>8;
+			
+			rgblr[index * 3 + 3*y*width + 0 ] = cutoff_0_FF(G);	//R							
+			rgblr[index * 3 + 3*y*width + 1 ] = 0;				//G
+			rgblr[index * 3 + 3*y*width + 2 ] = 0;					//B
+			
+			rgblr[(index + width) * 3 + 3*y*width + 0 ] = cutoff_0_FF(H);	//R							
+			rgblr[(index + width) * 3 + 3*y*width + 1 ] = 0;				//G
+			rgblr[(index + width) * 3 + 3*y*width + 2 ] = 0;					//B
+			
 
-			G = ((yuyv[index-width]/256)
-				+(yuyv[index+width]/256))/2;
-			rgbr[index * 3 + 2 ] = cutoff_0_FF(G);
-
-			G = ((yuyv[index]/256));
-			rgbr[index * 3 + 1 ] = cutoff_0_FF(G);
-
-			G = ((yuyv[index-1]/256)
-				+(yuyv[index+1]/256))/2;
-			rgbr[index * 3 + 0 ]= cutoff_0_FF(G);
-
-
-			G = (yuyv[index+1]/256);
-			rgbr[index * 3 + 5 ]= cutoff_0_FF(G);
-
-			G = ((yuyv[index-width+1]/256)
-				+(yuyv[index]/256)
-				+(yuyv[index+2]/256)
-				+(yuyv[index+width+1]/256))/4;
-			rgbr[index * 3 + 4 ]= cutoff_0_FF(G);
-
-			G = ((yuyv[index-width]/256)
-				+(yuyv[index-width+2]/256)
-				+(yuyv[index+width]/256)
-				+(yuyv[index+width+2]/256))/4;
-			rgbr[index * 3 + 3 ]= cutoff_0_FF(G);
+			G = yuyv[index+1]%256;
+			H = yuyv[index+1]>>8;
+			
+			rgblr[index * 3 + 3*y*width + 3 ] = 0;				//R	
+			rgblr[index * 3 + 3*y*width + 4 ] = cutoff_0_FF(G);	//G
+			rgblr[index * 3 + 3*y*width + 5 ] = 0;				//B
+			
+			rgblr[(index + width) * 3 + 3*y*width + 3 ] = 0;				//R
+			rgblr[(index + width) * 3 + 3*y*width + 4 ] = cutoff_0_FF(H);	//G
+			rgblr[(index + width) * 3 + 3*y*width + 5 ] = 0;				//B
 
 
-			G = ((yuyv[index-1]/256)
-				+(yuyv[index+1]/256)
-				+(yuyv[index+2*width-1]/256)
-				+(yuyv[index+2*width+1]/256))/4;
-			rgbr[(index+width) * 3 + 2 ]= cutoff_0_FF(G);
+			G = yuyv[index+width]%256;
+			H = yuyv[index+width]>>8;
+			
+			rgblr[index * 3 + 3*y*width + 0 ] = 0;				//R	
+			rgblr[index * 3 + 3*y*width + 1 ] = cutoff_0_FF(G);	//G
+			rgblr[index * 3 + 3*y*width + 2 ] = 0;					//B
+			
+			rgblr[(index + width) * 3 + 3*y*width + 0 ] = 0;				//R
+			rgblr[(index + width) * 3 + 3*y*width + 1 ] = cutoff_0_FF(H);	//G
+			rgblr[(index + width) * 3 + 3*y*width + 2 ] = 0;					//B
+			
 
-			G = ((yuyv[index]/256)
-				+(yuyv[index+2*width]/256)
-				+(yuyv[index+width-1]/256)
-				+(yuyv[index+width+1]/256))/4;
-			rgbr[(index+width) * 3 + 1 ]= cutoff_0_FF(G);
-
-			G = (yuyv[index+width]/256);	
-			rgbr[(index+width) * 3 + 0 ]= cutoff_0_FF(G);
-
-
-			G = ((yuyv[index+1]/256)
-				+(yuyv[index+2*width+1]/256))/2;
-			rgbr[(index+width) * 3 + 5 ]= cutoff_0_FF(G);
-
-			G = (yuyv[index+width+1]/256);
-			rgbr[(index+width) * 3 + 4 ]= cutoff_0_FF(G);
-
-			G = ((yuyv[index+width]/256)
-				+(yuyv[index+width+2]/256))/2;
-			rgbr[(index+width) * 3 + 3 ]= cutoff_0_FF(G);
+			G = yuyv[index+width+1]%256;
+			H = yuyv[index+width+1]>>8;
+			
+			rgblr[index * 3 + 3*y*width + 3 ] = 0;				//R	
+			rgblr[index * 3 + 3*y*width + 4 ] = 0;				//G
+			rgblr[index * 3 + 3*y*width + 5 ] = cutoff_0_FF(G);	//B
+			
+			rgblr[(index + width) * 3 + 3*y*width + 3 ] = 0;				//R
+			rgblr[(index + width) * 3 + 3*y*width + 4 ] = 0;				//G
+			rgblr[(index + width) * 3 + 3*y*width + 5 ] = cutoff_0_FF(H);	//B
 		}
-	return rgbr;
+		
+	return rgblr;
+
 }
-
-
+*/
 int main()
 {
 	int key;
-	uint8_t* rgbl;
-	uint8_t* rgbr;
+	uint8_t* rgblr;
 	
-	Mat lshow;
-	Mat rshow;
+	cv::ocl::setUseOpenCL(true);
 	
-	lshow = Mat(cam_height,cam_width,CV_8UC3);
-	rshow = Mat(cam_height,cam_width,CV_8UC3);
+	Mat lrframe;
+	UMat lruframe,lruframergb,lruframergbrsz;
 	
+	lrframe = Mat(cam_height, (2 * cam_width), CV_8U);
+	lruframe = UMat(cam_height, (2 * cam_width), CV_8U, USAGE_DEFAULT);
+	lruframergb = UMat(cam_height, (2 * cam_width), CV_8UC3, USAGE_DEFAULT);
+	lruframergbrsz = UMat (cam_height, (2 * cam_width), CV_8UC3, USAGE_DEFAULT);
 	camera_t* camera = camera_open("/dev/video0",
 								   cam_width,
 								   cam_height);
@@ -485,27 +440,27 @@ int main()
 		camera_frame(camera, timeout);
 	}
 
-	namedWindow("Left", CV_WINDOW_AUTOSIZE);
-	namedWindow("Right", CV_WINDOW_AUTOSIZE);
-	moveWindow("Left", 1300, 300);
-	moveWindow("Right", 2000, 300);
+	namedWindow("Output", CV_WINDOW_AUTOSIZE);
+	
+	moveWindow("Output", 1300, 300);
+	
 	while(1)
 	{
 		camera_frame(camera, timeout);
 		
-		rgbl = yuyv2rgbl(camera->head.start,
-						 camera->width,
-						 camera->height);
-						 
-		rgbr = yuyv2rgbr(camera->head.start,
-						 camera->width,
-						 camera->height);
-
-		lshow = Mat(cam_height,cam_width,CV_8UC3,rgbl);
-		rshow = Mat(cam_height,cam_width,CV_8UC3,rgbr);
-
-		imshow("Left", lshow);
-		imshow("Right", rshow);
+		rgblr = GetMatEachEye(camera->head.start,
+							  camera->width,
+							  camera->height);
+					 
+		lrframe = Mat(cam_height,(2*cam_width),CV_8UC1,rgblr);
+		
+		lrframe. copyTo(lruframe);
+		
+		cvtColor(lruframe,lruframergb,CV_BayerGR2RGB);
+		resize (lruframergb,lruframergbrsz,Size(),0.5,0.5,CV_INTER_AREA);
+		
+		imshow("Output", lruframergbrsz);
+		
 
 		key=waitKey(10);
 		if (key == 27) //'ESC'key == (int)27
@@ -515,8 +470,8 @@ int main()
 
 	destroyAllWindows();
 	
-	free(rgbr);
-	free(rgbl);
+	free(rgblr);
+	
 
 	camera_stop(camera);
 	camera_finish(camera);
