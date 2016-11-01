@@ -303,11 +303,9 @@ int cutoff_0_FF(int value)
 return (value < 0) ? 0 : (0xFF < value) ? 0xFF : value;
 }
 
-uint8_t* GetMatEachEye(uint16_t* yuyv, uint32_t width, uint32_t height)
+void GetMatEachEye(uint16_t* yuyv, uint32_t width, uint32_t height,uint8_t* lr)
 {
-	uint8_t* lr = (uint8_t*) calloc(width * height * 2,
-										sizeof (uint8_t));
-	
+		
 	unsigned int G,H;
 										
 	for (size_t y = 0; y < height; y +=2)
@@ -341,7 +339,7 @@ uint8_t* GetMatEachEye(uint16_t* yuyv, uint32_t width, uint32_t height)
 			lr[(index + width) + y*width + 2*width + 1 ] = cutoff_0_FF(H);
 		}
 		
-	return lr;
+	return;
 
 }
 
@@ -412,8 +410,8 @@ uint8_t* GetMatEachEye_C3(uint16_t* yuyv, uint32_t width, uint32_t height)
 */
 int main()
 {
-	int key;
-	uint8_t* rgblr;
+	char key;
+	
 	
 	cv::ocl::setUseOpenCL(true);
 	
@@ -423,7 +421,8 @@ int main()
 	lrframe = Mat(cam_height, (2 * cam_width), CV_8U);
 	lruframe = UMat(cam_height, (2 * cam_width), CV_8U, USAGE_DEFAULT);
 	lruframergb = UMat(cam_height, (2 * cam_width), CV_8UC3, USAGE_DEFAULT);
-	lruframergbrsz = UMat (cam_height, (2 * cam_width), CV_8UC3, USAGE_DEFAULT);
+	lruframergbrsz = UMat (cam_height*0.5,  cam_width, CV_8UC3, USAGE_DEFAULT);
+	
 	camera_t* camera = camera_open("/dev/video0",
 								   cam_width,
 								   cam_height);
@@ -448,9 +447,21 @@ int main()
 	{
 		camera_frame(camera, timeout);
 		
-		rgblr = GetMatEachEye(camera->head.start,
+		uint8_t* rgblr = (uint8_t*) calloc((camera->width) * (camera->height) * 2, sizeof (uint8_t));
+		// uint8_t* lr = (uint8_t*) calloc(width * height * 2, sizeof (uint8_t));
+		
+		GetMatEachEye(camera->head.start,
 							  camera->width,
-							  camera->height);
+							  camera->height,
+							  rgblr);
+		
+		/*
+		Here shoud be artificial object insertion
+		 */
+		
+		
+		
+		
 					 
 		lrframe = Mat(cam_height,(2*cam_width),CV_8UC1,rgblr);
 		
@@ -461,18 +472,22 @@ int main()
 		
 		imshow("Output", lruframergbrsz);
 		
-
-		key=waitKey(10);
+		key=waitKey(20);
+		
 		if (key == 27) //'ESC'key == (int)27
 			break;
+			
+		free(rgblr);
+		lruframergbrsz.release();
+		lruframergb.release();
+		lruframe.release();
+		lrframe.release();
+		
 		
 	}
 
 	destroyAllWindows();
-	
-	free(rgblr);
-	
-
+		
 	camera_stop(camera);
 	camera_finish(camera);
 	camera_close(camera);
