@@ -66,6 +66,7 @@ enum _AppMode
 	Start,
 	Reference_View,
 	Calib_Image,
+	Calib_Read,
 	Calib_Process,
 	Calib_Undistortion,
 	Final_Review,
@@ -78,14 +79,17 @@ enum _AppMode AppMode;
 using namespace cv;
 using namespace std;
 
-
+/// ///////////////////////
 void quit(const char * msg)
+/// ///////////////////////
 {
 	fprintf(stderr, "[%s] %d: %s\n", msg, errno, strerror(errno));
 	exit(EXIT_FAILURE);
 }
 
+/// //////////////////////////////////////
 int xioctl(int fd, int request, void* arg)
+/// //////////////////////////////////////
 {
 	for (int i = 0; i < 100; i++)
 	{
@@ -115,7 +119,9 @@ typedef struct
 static const int cam_width (1280);
 static const int cam_height (960);
 
+/// ///////////////////////////////////////////////////////////////////////
 camera_t* camera_open(const char * device, uint32_t width, uint32_t height)
+/// ///////////////////////////////////////////////////////////////////////
 {
 	int fd = open(device, O_RDWR | O_NONBLOCK, 0);
 	
@@ -133,8 +139,9 @@ camera_t* camera_open(const char * device, uint32_t width, uint32_t height)
 	return camera;
 }
 
-
+/// //////////////////////////////
 void camera_init(camera_t* camera)
+/// //////////////////////////////
 {
 	struct v4l2_capability cap;
 	
@@ -219,8 +226,9 @@ void camera_init(camera_t* camera)
 	camera->head.start = (uint16_t*) malloc(buf_max);
 }
 
-
+/// ///////////////////////////////
 void camera_start(camera_t* camera)
+/// ///////////////////////////////
 {
 	for (size_t i = 0; i < camera->buffer_count; i++)
 	{
@@ -241,7 +249,9 @@ void camera_start(camera_t* camera)
 		quit("ERROR CODE: VIDIOC_STREAMON");
 }
 
+/// //////////////////////////////
 void camera_stop(camera_t* camera)
+/// //////////////////////////////
 {
 	enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	
@@ -249,7 +259,9 @@ void camera_stop(camera_t* camera)
 		quit("ERROR CODE: VIDIOC_STREAMOFF");
 }
 
+/// ////////////////////////////////
 void camera_finish(camera_t* camera)
+/// ////////////////////////////////
 {
 	for (size_t i = 0; i < camera->buffer_count; i++)
 	{
@@ -264,7 +276,9 @@ void camera_finish(camera_t* camera)
 	camera->head.start = NULL;
 }
 
+/// ///////////////////////////////
 void camera_close(camera_t* camera)
+/// ///////////////////////////////
 {
 
 	if (close(camera->fd) == -1)
@@ -273,8 +287,9 @@ void camera_close(camera_t* camera)
 	free(camera);
 }
 
-
+/// ////////////////////////////////
 int camera_capture(camera_t* camera)
+/// ////////////////////////////////
 {
 	struct v4l2_buffer buf;
 	memset(&buf, 0, sizeof buf);
@@ -297,7 +312,9 @@ int camera_capture(camera_t* camera)
 	return TRUE;
 }
 
+/// //////////////////////////////////////////////////////
 int camera_frame(camera_t* camera, struct timeval timeout)
+/// //////////////////////////////////////////////////////
 {
 	fd_set fds;
 	FD_ZERO(&fds);
@@ -314,12 +331,18 @@ int camera_frame(camera_t* camera, struct timeval timeout)
 	return camera_capture(camera);
 	
 }
+
+/// ///////////////////////
 int cutoff_0_FF(int value)
+/// ///////////////////////
 {
 return (value < 0) ? 0 : (0xFF < value) ? 0xFF : value;
 }
 
+
+/// /////////////////////////////////////////////////////////////////////////////////
 void GetMatLeftEye(uint16_t* yuyv, uint32_t width, uint32_t height,uint8_t* left_buf)
+/// /////////////////////////////////////////////////////////////////////////////////
 {
 		
 	unsigned int L;
@@ -344,7 +367,10 @@ void GetMatLeftEye(uint16_t* yuyv, uint32_t width, uint32_t height,uint8_t* left
 	return;
 }
 
+
+/// ///////////////////////////////////////////////////////////////////////////////////
 void GetMatRightEye(uint16_t* yuyv, uint32_t width, uint32_t height,uint8_t* right_buf)
+/// ///////////////////////////////////////////////////////////////////////////////////
 {
 		
 	unsigned int R;
@@ -372,7 +398,10 @@ void GetMatRightEye(uint16_t* yuyv, uint32_t width, uint32_t height,uint8_t* rig
 
 }
 
+
+/// ////////////////////////////////////////////////////////////////////////
 void ChessBoardSize (Size board_sz, float square_size, vector<Point3f>& obj)
+/// ////////////////////////////////////////////////////////////////////////
 {
 	for( int i = 0; i < board_sz.height; i++ )
 	{
@@ -382,8 +411,6 @@ void ChessBoardSize (Size board_sz, float square_size, vector<Point3f>& obj)
 		}
 	}
 }                                
-
-
 
 
 /// ////////////////////////////////////////////////////////////////////
@@ -418,9 +445,6 @@ void ReferenceView (camera_t* camera)
 	ruframe = UMat(cam_height, cam_width, CV_8U, USAGE_DEFAULT);
 	luframergb = UMat(cam_height, cam_width, CV_8UC3, USAGE_DEFAULT);
 	ruframergb = UMat(cam_height, cam_width, CV_8UC3, USAGE_DEFAULT);
-	
-	
-	
 	
 		/* skip 5 frames for booting a cam */
 	for (int i = 0; i < 5; i++)
@@ -488,12 +512,17 @@ void ReferenceView (camera_t* camera)
 			AppMode = USER_STOP;
 			break;
 		}
-		if (key == 99) 
+		if ((key == 99)|(key== 67)) 
 		{
 			AppMode = Calib_Image;
 			break;
 		}	// 'c' key == (int) 99
-		
+		if ((key == 82)|(key == 114)) 
+		{
+			AppMode = Calib_Read;
+			break;
+		}
+			 
 		key = -1;		
 		free(left_buf);
 		free(right_buf);
@@ -511,19 +540,14 @@ void ReferenceView (camera_t* camera)
 	return ;
 }
 
-
-
-
-
-
-
 /// ////////////////////////////////////////////////////////////////////
 void Calibrate(camera_t* camera)
 /// ////////////////////////////////////////////////////////////////////
 {
 	char key;
 	int skipframe (0);
-	
+	FileStorage fs;
+	vector <string> file_name;
 	struct timeval timeout;
 	timeout.tv_sec = 1;
 	timeout.tv_usec = 0;
@@ -588,13 +612,13 @@ void Calibrate(camera_t* camera)
 	
 	
 	
-	///	/* skip 5 frames for booting a cam */
+	//	/* skip 5 frames for booting a cam */
 	
 	for (int i = 0; i < 5; i++)
 	{
 		camera_frame(camera, timeout);
 	}
-	/// /////////////////////////////////////
+	
 	
 	namedWindow("Left", CV_WINDOW_NORMAL);
 	namedWindow("Right",CV_WINDOW_NORMAL);
@@ -747,17 +771,22 @@ void Calibrate(camera_t* camera)
 				string LeftImageFileName ;
 				string RightImageFileName ;
 								
-				LeftImageFileName = "L" + to_string (stored_image_pairs);
-				RightImageFileName = "R" + to_string (stored_image_pairs);
+				LeftImageFileName = "L" + to_string (stored_image_pairs)+".jpg";
+				RightImageFileName = "R" + to_string (stored_image_pairs)+".jpg";
 				
-				FileStorage fs ("imagecalibration.yml", FileStorage::APPEND);
+				file_name.push_back(LeftImageFileName);
+				file_name.push_back(RightImageFileName);
 				
-				fs << LeftImageFileName << RightImageFileName;
-				
+				fs.open ("imagecalibration.json", FileStorage::WRITE);				
+				fs << "TotalNumber" << stored_image_pairs;
+				fs << "File Name" << "[" << file_name << "]";
+								
 				fs.release();
-						
-				imwrite ("./images/"+LeftImageFileName+".jpg", luframergb);
-				imwrite ("./images/"+RightImageFileName+".jpg", ruframergb);
+				
+				
+					
+				imwrite ("./images/"+LeftImageFileName, luframergb);
+				imwrite ("./images/"+RightImageFileName, ruframergb);
 				
 				drawChessboardCorners(luframergb, board_sz, L_corners, Lfound);
 				drawChessboardCorners(ruframergb, board_sz, R_corners, Rfound);
@@ -798,6 +827,7 @@ void Calibrate(camera_t* camera)
 			else 
 			{
 				AppMode = Calib_Process;
+				
 				break;
 			}
 		}
@@ -913,19 +943,223 @@ void Calibrate(camera_t* camera)
 		}
 	}
 	
-	
-	
 	destroyAllWindows();
 	
 	return ;
 }
 
-/// /////////////////////////////////////////////////////////////////
-int main()
+
+/// /////////////////////////////////////////////////////////
+void CalibRead(camera_t* camera)
+/// /////////////////////////////////////////////////////////
 {
+	
+	vector<string> file_name;
+	int total (0);
+	char key(-1);
+	
+	struct timeval timeout;
+	timeout.tv_sec = 1;
+	timeout.tv_usec = 0;
+	
+	string LeftImageFileName;
+	string RightImageFileName;
+	
+	vector < vector <Point3f> > object_points;
+    vector < vector <Point2f> > L_image_points;
+    vector < vector <Point2f> > R_image_points;
+	vector < Point2f > L_corners;
+	vector < Point2f > R_corners;
+	
+	
+	// ChessBoard 
+	int numCornersHor (9);
+    int numCornersVer (7);
+    float square_size (0.025f);
+     
+    Size board_sz = Size(numCornersHor, numCornersVer);
+	
+	vector<Point3f> obj;
+    
+    ChessBoardSize (board_sz, square_size, obj);
+	
+	Mat lframe, rframe, lframergb, rframergb;
+	UMat luframe,ruframe, luframergb, ruframergb;
+	
+	lframergb = Mat(cam_height,cam_width,CV_8UC3);
+	rframergb = Mat(cam_height,cam_width,CV_8UC3);
+	
+	lframe = Mat(cam_height,cam_width,CV_8UC1);
+	rframe = Mat(cam_height,cam_width,CV_8UC1);
+	
+	FileStorage fs ("imagecalibration.json", FileStorage::READ);
+	
+	fs["TotalNumber"] >> total;
+	
+	FileNode nd = fs["File Name"];                         // Read string sequence - Get node
+	if (nd.type() != FileNode::SEQ)
+	{
+		quit("strings is not a sequence! FAIL");
+	}
+	
+	FileNodeIterator it = nd.begin(), it_end = nd.end(); // Go through the node
+	for (; it != it_end; ++it)
+    {
+		file_name.push_back ((string)*it);
+	}
+	
+	fs.release();
+	 
+	for (int i=0; i<total; i++)
+	{
+		LeftImageFileName = file_name.at(2*i);
+		RightImageFileName = file_name.at(2*i+1);
+	
+		cout << LeftImageFileName << endl << RightImageFileName << endl;
+		lframergb= imread ("./images/"+LeftImageFileName);
+		rframergb= imread ("./images/"+RightImageFileName);
+		
+		cvtColor (lframergb,lframe,CV_RGB2GRAY);
+		cvtColor (rframergb,rframe,CV_RGB2GRAY);
+	
+		findChessboardCorners(lframergb,
+							  board_sz,
+							  L_corners,
+							  CV_CALIB_CB_ADAPTIVE_THRESH | CV_CALIB_CB_FILTER_QUADS);
+	
+		cornerSubPix(lframe,
+					 L_corners,
+					 Size(11, 11),
+					 Size(-1, -1),
+					 TermCriteria(CV_TERMCRIT_EPS | CV_TERMCRIT_ITER, 30, 0.1));
+	
+		findChessboardCorners(rframergb,
+							  board_sz,
+							  R_corners,
+							  CV_CALIB_CB_ADAPTIVE_THRESH | CV_CALIB_CB_FILTER_QUADS);
+	
+		cornerSubPix(rframe,
+					 R_corners,
+					 Size(11, 11),
+					 Size(-1, -1),
+					 TermCriteria(CV_TERMCRIT_EPS | CV_TERMCRIT_ITER, 30, 0.1));
+	
+		L_image_points.push_back(L_corners);
+		R_image_points.push_back(R_corners);
+		object_points.push_back(obj);
+	
+	}
+	lframergb.release();
+	rframergb.release();
+	
+	namedWindow("L-Undistorted", CV_WINDOW_NORMAL);
+	namedWindow("R-Undistorted",CV_WINDOW_NORMAL);
+	resizeWindow("L-Undistorted", 640, 480);
+	resizeWindow("R-Undistorted", 640, 480);
+	moveWindow("L-Undistorted", 400, 300);
+	moveWindow("R-Undistorted",1100, 300);
+
+	AppMode = Calib_Process;
+	
+	Mat L_intrinsic = Mat(3, 3, CV_32FC1);
+	Mat R_intrinsic = Mat(3, 3, CV_32FC1);
+	Mat L_distCoeffs;
+	Mat R_distCoeffs;
+	
+    vector<Mat> L_rvecs;
+    vector<Mat> R_rvecs;
+    vector<Mat> L_tvecs;
+    vector<Mat> R_tvecs;
+    
+    L_intrinsic.ptr<float>(0)[0] = 1;
+    R_intrinsic.ptr<float>(0)[0] = 1;
+    
+    L_intrinsic.ptr<float>(1)[1] = 1;
+    R_intrinsic.ptr<float>(1)[1] = 1;
+    
+    calibrateCamera(object_points, L_image_points, Size(cam_width,cam_height), L_intrinsic, L_distCoeffs, L_rvecs, L_tvecs);
+    calibrateCamera(object_points, R_image_points, Size(cam_width,cam_height), R_intrinsic, R_distCoeffs, R_rvecs, R_tvecs);
+    
+    Mat luframergbUndistorted;
+	Mat ruframergbUndistorted;
+    
+    /// Calib_Undistortion    
+    
+    AppMode = Calib_Undistortion;
+    
+    while (1)
+    {
+		camera_frame(camera, timeout);
+				
+		uint8_t* left_buf = (uint8_t*) calloc((camera->width) * (camera->height), sizeof (uint8_t));
+		uint8_t* right_buf = (uint8_t*) calloc((camera->width) * (camera->height), sizeof (uint8_t));
+		
+				
+		GetMatLeftEye(camera->head.start,
+							  camera->width,
+							  camera->height,
+							  left_buf);
+		
+		
+		GetMatRightEye(camera->head.start,
+							  camera->width,
+							  camera->height,
+							  right_buf);
+		
+						 
+		lframe = Mat(cam_height,cam_width,CV_8UC1,left_buf);
+		rframe = Mat(cam_height,cam_width,CV_8UC1,right_buf);
+		
+		lframe. copyTo(luframe);
+		rframe. copyTo(ruframe);
+		
+		cvtColor(luframe,luframergb,CV_BayerGR2RGB);
+		cvtColor(ruframe,ruframergb,CV_BayerGR2RGB);
+		
+		undistort(luframergb, luframergbUndistorted, L_intrinsic, L_distCoeffs);
+		undistort(ruframergb, ruframergbUndistorted, R_intrinsic, R_distCoeffs);
+	
+		imshow("L-Undistorted",luframergbUndistorted);
+		imshow("R-Undistorted",luframergbUndistorted); 
+	
+		key=waitKey(30);
+		
+		free(left_buf);
+		free(right_buf);
+		
+		luframergbUndistorted.release();
+		ruframergbUndistorted.release();
+		luframergb.release();
+		ruframergb.release();
+		luframe.release();
+		ruframe.release();
+		lframe.release();
+		rframe.release();
+		
+		if (key == 27) 
+		{ 
+			AppMode = ERROR;
+			break;
+		}
+		if ((key == 'Y') |( key =='y')) 
+		{
+		// SAVE PARAMETERS
+			break;
+			
+		}
+	
+	
+
+	}
+	
+	destroyAllWindows();
+	return;
+}
+
+/// ////////////////////////////////////////////////////////////////////
+/// ////////////////////////////////////////////////////////////////////
+int main() {
 	AppMode = Start;
-	
-	
     
 	camera_t* camera = camera_open("/dev/video0",
 								   cam_width,
@@ -955,10 +1189,12 @@ int main()
 		if (AppMode == ERROR) 
 		{
 		}	
-		
-			
 	}	
 	
+	if (AppMode==Calib_Read)
+	{
+		CalibRead(camera);
+	}
 				
 	camera_stop(camera);
 	camera_finish(camera);
@@ -966,4 +1202,3 @@ int main()
 	
 	return 0;
 }
-
