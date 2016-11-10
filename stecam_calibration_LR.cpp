@@ -23,7 +23,7 @@
 
 /*
 * V4L2 video capture and openCV display for StereoCam with 16bpp
-* RAW Rinput( Left 8bpp+Right 8bpp).
+* RAW input (Left 8bpp+Right 8bpp).
 * Demosaicing with opencv GPU process, Not guaranted working on every 
 * machine.
 *
@@ -555,8 +555,8 @@ void Calibrate(camera_t* camera)
 		
 	// ChessBoard 
 	int numCornersHor (9);
-    int numCornersVer (7);
-    float square_size (0.025f);
+    int numCornersVer (6);
+    float square_size (0.0254f);
  
     
     Size board_sz = Size(numCornersHor, numCornersVer);
@@ -779,7 +779,7 @@ void Calibrate(camera_t* camera)
 				
 				fs.open ("imagecalibration.json", FileStorage::WRITE);				
 				fs << "TotalNumber" << stored_image_pairs;
-				fs << "File Name" << "[" << file_name << "]";
+				fs << "FileName" << file_name ;
 								
 				fs.release();
 				
@@ -819,7 +819,7 @@ void Calibrate(camera_t* camera)
 		
 		if (key == 27) //'ESC'key == (int)27
 		{
-			if (stored_image_pairs < 20)
+			if (stored_image_pairs < 10)
 			{
 				AppMode = ERROR;
 				break;
@@ -937,7 +937,22 @@ void Calibrate(camera_t* camera)
 		}
 		if ((key == 'Y') |( key =='y')) 
 		{
-		// SAVE PARAMETERS
+		
+		FileStorage fs2;
+		
+		fs2.open("calib2d.json",FileStorage::WRITE);
+		fs2 << "L_Intrinsic" << L_intrinsic;
+		fs2 << "R_Intrinsic" << R_intrinsic;
+		fs2 << "L_DistCoeffs" << L_distCoeffs;
+		fs2 << "R_DistCoeffs" << R_distCoeffs;
+		
+		fs2 << "L_rvecs" << L_rvecs;
+		fs2 << "R_rvecs" << R_rvecs;
+		fs2 << "L_tvecs" << L_tvecs;
+		fs2 << "R_tvecs" << R_tvecs;
+		
+		fs2.release();
+		
 			break;
 			
 		}
@@ -955,6 +970,7 @@ void CalibRead(camera_t* camera)
 {
 	
 	vector<string> file_name;
+	
 	int total (0);
 	char key(-1);
 	
@@ -972,10 +988,10 @@ void CalibRead(camera_t* camera)
 	vector < Point2f > R_corners;
 	
 	
-	// ChessBoard 
+	// ChessBoard
 	int numCornersHor (9);
-    int numCornersVer (7);
-    float square_size (0.025f);
+    int numCornersVer (6);
+    float square_size (0.0254f);
      
     Size board_sz = Size(numCornersHor, numCornersVer);
 	
@@ -996,26 +1012,37 @@ void CalibRead(camera_t* camera)
 	
 	fs["TotalNumber"] >> total;
 	
-	FileNode nd = fs["File Name"];                         // Read string sequence - Get node
-	if (nd.type() != FileNode::SEQ)
-	{
-		quit("strings is not a sequence! FAIL");
-	}
+	file_name.resize( 2*total);
+	
+	FileNode nd = fs["FileName"];  
+	
+	// Read string sequence - Get node
+	
+	// if (nd.type() != FileNode::SEQ)
+	//{
+	//	quit("strings is not a sequence! FAIL");
+	//}
 	
 	FileNodeIterator it = nd.begin(), it_end = nd.end(); // Go through the node
+	int i = 0;
 	for (; it != it_end; ++it)
     {
-		file_name.push_back ((string)*it);
+		i++;
+		file_name.at(i-1)=((string) *it);
 	}
-	
+	i=0;
 	fs.release();
-	 
+		
+		
+		
 	for (int i=0; i<total; i++)
 	{
+				
 		LeftImageFileName = file_name.at(2*i);
 		RightImageFileName = file_name.at(2*i+1);
 	
 		cout << LeftImageFileName << endl << RightImageFileName << endl;
+		
 		lframergb= imread ("./images/"+LeftImageFileName);
 		rframergb= imread ("./images/"+RightImageFileName);
 		
@@ -1143,8 +1170,27 @@ void CalibRead(camera_t* camera)
 		}
 		if ((key == 'Y') |( key =='y')) 
 		{
-		// SAVE PARAMETERS
-			break;
+		
+		FileStorage fs2;
+		
+		fs2.open("calib2d.json",FileStorage::WRITE);
+		fs2 << "L_Intrinsic" << L_intrinsic;
+		fs2 << "R_Intrinsic" << R_intrinsic;
+		fs2 << "L_DistCoeffs" << L_distCoeffs;
+		fs2 << "R_DistCoeffs" << R_distCoeffs;
+		
+		fs2 << "L_rvecs" << L_rvecs;
+		fs2 << "R_rvecs" << R_rvecs;
+		fs2 << "L_tvecs" << L_tvecs;
+		fs2 << "R_tvecs" << R_tvecs;
+		
+		fs2.release();
+		
+		
+		
+		
+		
+		break;
 			
 		}
 	
@@ -1156,9 +1202,11 @@ void CalibRead(camera_t* camera)
 	return;
 }
 
+
 /// ////////////////////////////////////////////////////////////////////
+int main() 
 /// ////////////////////////////////////////////////////////////////////
-int main() {
+{
 	AppMode = Start;
     
 	camera_t* camera = camera_open("/dev/video0",
